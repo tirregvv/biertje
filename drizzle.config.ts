@@ -5,6 +5,10 @@ export default defineConfig({
   out: './server/database/migrations',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL || 'postgres:///biert'
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 5432,
+    database: process.env.DB_NAME || 'biert',
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD
   }
 })
