@@ -32,6 +32,47 @@ let userInteracted = false
 let focusedSessionId: string | null = null
 let mapReady = false
 let pendingFocusId: string | null = null
+let introTween: gsap.core.Tween | null = null
+
+/**
+ * MapLibre's globe projection sizes the sphere so its equator circumference (in screen pixels)
+ * matches the flat Mercator `worldSize` (512 * 2^zoom) at the same zoom — that's what keeps zoom
+ * levels feeling consistent when switching projections. Solving worldSize / (2*PI) for the radius
+ * that makes the sphere's diameter a given fraction of the container width gives the zoom to ask
+ * for. This is derived from that relationship, not visually tuned against real tiles (this
+ * environment has no MAPTILER_KEY to render against) — nudge FILL_FRACTION if it looks off.
+ */
+function fillZoomForWidth(widthPx: number, fillFraction: number) {
+  const targetDiameterPx = widthPx * fillFraction
+  return Math.log2((targetDiameterPx * Math.PI) / 512)
+}
+
+/** Waits (up to timeoutMs) for the geolocation watch in the layout to report a position, so the
+ * intro can fly to it instead of sitting on a generic center — but never hangs the intro forever
+ * if permission is denied or the fix is slow. */
+function waitForLocation(timeoutMs: number): Promise<{ lat: number; lng: number } | null> {
+  if (props.myLocation) return Promise.resolve(props.myLocation)
+  return new Promise((resolve) => {
+    let settled = false
+    const stop = watch(
+      () => props.myLocation,
+      (loc) => {
+        if (loc && !settled) {
+          settled = true
+          stop()
+          resolve(loc)
+        }
+      }
+    )
+    setTimeout(() => {
+      if (!settled) {
+        settled = true
+        stop()
+        resolve(null)
+      }
+    }, timeoutMs)
+  })
+}
 
 function startIdleRotation() {
   if (!map) return
@@ -263,18 +304,42 @@ onMounted(() => {
     applyPlaceLabelZoomThreshold('continent', props.continentLabelZoomThreshold)
   })
 
-  map.on('load', () => {
+  map.on('load', async () => {
     syncMarkers()
     syncMyLocationMarker()
 
-    // Intro: swoop in from a wide starfield view to the resting zoom level.
-    const introTarget = { zoom: 0.4 }
-    gsap.to(introTarget, {
-      zoom: 1.4,
-      duration: 2.2,
-      ease: 'power2.out',
-      onUpdate: () => map?.setZoom(introTarget.zoom),
+    const startCenter = map.getCenter()
+    const startZoom = map.getZoom()
+
+    // Wait briefly for the user's location so the spin actually lands somewhere meaningful — if
+    // it never arrives (denied/slow), the spin still plays out and lands back on the start center.
+    const location = await waitForLocation(4000)
+    if (!map) return // component may have unmounted while we were waiting
+
+    const targetLat = location?.lat ?? startCenter.lat
+    const targetLng = location?.lng ?? startCenter.lng
+    const targetZoom = fillZoomForWidth(mapEl.value?.getBoundingClientRect().width ?? 0, 0.95)
+
+    // A full 360° spin that still lands exactly on the target: travel the shortest-path direction
+    // (spinning the globe by moving the center's longitude, same idiom as the idle rotation below —
+    // bearing/pitch stay put), but go one extra full revolution around before the final approach.
+    // The extra revolution must be added in the shortest path's OWN direction — adding a flat +360
+    // regardless of sign can net out to *less* than one full turn when the shortest path is negative
+    // (e.g. shortest=-84: naively 360-84=276, not a full spin; going -360-84=-444 the same way is).
+    const shortestDelta = (((targetLng - startCenter.lng + 180) % 360) + 360) % 360 - 180
+    const spinDirection = shortestDelta < 0 ? -1 : 1
+    const spinLng = startCenter.lng + shortestDelta + spinDirection * 360
+
+    const introState = { lng: startCenter.lng, lat: startCenter.lat, zoom: startZoom }
+    introTween = gsap.to(introState, {
+      lng: spinLng,
+      lat: targetLat,
+      zoom: targetZoom,
+      duration: 3.6,
+      ease: 'power2.inOut',
+      onUpdate: () => map?.jumpTo({ center: [introState.lng, introState.lat], zoom: introState.zoom }),
       onComplete: () => {
+        introTween = null
         startIdleRotation()
         mapReady = true
         tryFocusPending()
@@ -283,10 +348,18 @@ onMounted(() => {
   })
 
   /** Any interaction with the globe — pan/rotate, pinch/scroll zoom, or a marker tap (whose own
-   * mousedown bubbles here too) — should get the sheet out of the way, not just marker selection. */
+   * mousedown bubbles here too) — should get the sheet out of the way, not just marker selection.
+   * It should also hand control back immediately rather than fighting the (now several-second)
+   * intro spin: an early tap kills the tween in place and unblocks anything waiting on mapReady. */
   const onInteractionStart = () => {
     userInteracted = true
     emit('interact')
+    if (!mapReady && introTween) {
+      introTween.kill()
+      introTween = null
+      mapReady = true
+      tryFocusPending()
+    }
   }
   map.on('mousedown', onInteractionStart)
   map.on('touchstart', onInteractionStart)
