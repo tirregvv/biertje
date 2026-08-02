@@ -31,10 +31,17 @@ function openFriend(friendId: string) {
   }
 }
 
+/** Marker taps skip openFriend: the marker's own click handler already kicked off the globe's
+ * fly-to animation, so calling focusSession again here would immediately cancel it (GlobeMap
+ * treats a second flyToSession for the same session as a toggle-off). Collapsing the sheet to
+ * its most-closed snap point (instead of 'full') keeps the globe unobstructed for that flight. */
 function onMarkerSelect(sessionId: string | null) {
   if (!sessionId) return
   const session = store.active.find((s) => s.id === sessionId)
-  if (session) openFriend(session.userId)
+  if (!session) return
+  selectedFriendId.value = session.userId
+  sheetView.value = 'detail'
+  sheetSnap.value = 'closed'
 }
 
 function onHeaderNavClick() {
@@ -93,7 +100,7 @@ onBeforeUnmount(() => {
   <div class="relative h-full w-full overflow-hidden">
     <GlobeMap ref="globeRef" :sessions="store.mappable" :my-location="myLocation" @select="onMarkerSelect" />
 
-    <BottomSheet v-model="sheetSnap" :snap-points="{ peek: 0.42, full: 0.94 }">
+    <BottomSheet v-model="sheetSnap" :snap-points="{ closed: 0.12, peek: 0.42, full: 0.94 }">
       <template #header>
         <div class="flex items-center justify-between px-2 pt-1">
           <button
