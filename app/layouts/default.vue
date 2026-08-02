@@ -3,7 +3,10 @@ const route = useRoute()
 const { loggedIn } = useUserSession()
 const { connect, disconnect } = useSessionsSocket()
 const store = useBeerSessionsStore()
-const { sheetSnap, sheetView, selectedFriendId, globeApi, myLocation } = useMapShell()
+const sheetSnap = useSheetSnap()
+const sheetView = useSheetView()
+const selectedFriendId = useSelectedFriendId()
+const myLocation = useMyLocation()
 
 const navItems = [
   { to: '/', icon: '🌍', label: 'Globe' },
@@ -20,7 +23,7 @@ const sheetOverlayFraction = computed(() => sheetSnapPoints[sheetSnap.value as k
 const showShell = computed(() => loggedIn.value && !['/login', '/signup'].includes(route.path))
 
 const globeEl = ref<GlobeApi | null>(null)
-watch(globeEl, (el) => (globeApi.value = el))
+provideGlobeApi(globeEl)
 
 let geoWatchId: number | null = null
 

@@ -5,9 +5,11 @@ export type Toast = {
   type?: string
 }
 
-const toasts = ref<Toast[]>([])
-
 export function useToast() {
+  // useState (not a bare module-level ref) — a `const x = ref()` at module scope is shared across
+  // server requests, which is exactly what Nuxt's state-management guidance says to avoid.
+  const toasts = useState<Toast[]>('toasts', () => [])
+
   function push(toast: Omit<Toast, 'id'>, durationMs = 4500) {
     const id = crypto.randomUUID()
     toasts.value.push({ id, ...toast })

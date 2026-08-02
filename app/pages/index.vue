@@ -5,7 +5,10 @@ const route = useRoute()
 const router = useRouter()
 const store = useBeerSessionsStore()
 const { subscribe: subscribeToPush } = usePushSubscription()
-const { sheetView, selectedFriendId, globeApi, myLocation } = useMapShell()
+const sheetView = useSheetView()
+const selectedFriendId = useSelectedFriendId()
+const myLocation = useMyLocation()
+const globeApi = useGlobeApi()
 
 const { data: friendsData, refresh: refreshFriends } = await useFetch<{ friends: FriendWithSession[] }>('/api/friends')
 
