@@ -6,8 +6,7 @@ let configured = false
 
 function ensureConfigured() {
   if (configured) return
-  const config = useRuntimeConfig()
-  webpush.setVapidDetails('mailto:hello@biert.app', config.vapidPublicKey as string, config.vapidPrivateKey as string)
+  webpush.setVapidDetails('mailto:hello@biert.app', process.env.VAPID_PUBLIC_KEY || '', process.env.VAPID_PRIVATE_KEY || '')
   configured = true
 }
 

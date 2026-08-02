@@ -6,8 +6,7 @@ let _db: ReturnType<typeof drizzle<typeof schema>> | undefined
 
 export function useDb() {
   if (!_db) {
-    const config = useRuntimeConfig()
-    const client = postgres(config.databaseUrl as string)
+    const client = postgres(process.env.DATABASE_URL || 'postgres:///biert')
     _db = drizzle(client, { schema })
   }
   return _db

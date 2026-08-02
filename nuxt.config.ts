@@ -11,9 +11,6 @@ export default defineNuxtConfig({
     }
   },
   runtimeConfig: {
-    databaseUrl: process.env.DATABASE_URL,
-    vapidPublicKey: process.env.VAPID_PUBLIC_KEY,
-    vapidPrivateKey: process.env.VAPID_PRIVATE_KEY,
     oauth: {
       google: {
         clientId: process.env.NUXT_OAUTH_GOOGLE_CLIENT_ID,
