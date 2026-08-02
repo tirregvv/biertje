@@ -1,3 +1,7 @@
+import { config } from 'dotenv'
+
+config()
+
 export function getDbConnectionOptions(overrides: Record<string, unknown> = {}) {
   return {
     host: process.env.DB_HOST || 'localhost',
