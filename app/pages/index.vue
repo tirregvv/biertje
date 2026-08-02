@@ -8,7 +8,18 @@ const { subscribe: subscribeToPush } = usePushSubscription()
 const { sheetView, selectedFriendId, globeApi, myLocation } = useMapShell()
 
 const { data: friendsData, refresh: refreshFriends } = await useFetch<{ friends: FriendWithSession[] }>('/api/friends')
-const friends = computed(() => friendsData.value?.friends ?? [])
+
+/** `/api/friends` only reflects each friend's session as of that one-time fetch — it never
+ * updates again on its own. Overlaying the live session from the realtime store (kept current by
+ * the websocket in useSessionsSocket) is what makes "friend starts a session" show up here
+ * without a refetch; the REST snapshot still backs the "last drink X ago" display once a session
+ * ends and drops out of the store. */
+const friends = computed<FriendWithSession[]>(() =>
+  (friendsData.value?.friends ?? []).map((friend) => {
+    const liveSession = store.active.find((s) => s.userId === friend.id)
+    return liveSession ? { ...friend, lastSession: { ...liveSession, endedEarlyAt: null } } : friend
+  })
+)
 const selectedFriend = computed(() => friends.value.find((f) => f.id === selectedFriendId.value) ?? null)
 
 /** Opens a friend's detail view and, if they have a mappable session, flies the globe there. Used
