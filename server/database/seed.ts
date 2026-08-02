@@ -2,9 +2,9 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { challenges } from './schema'
 import { seedChallenges } from './seed-data/challenges'
+import { getDbConnectionOptions } from './connection'
 
-const databaseUrl = process.env.DATABASE_URL || 'postgres:///biert'
-const client = postgres(databaseUrl, { max: 1 })
+const client = postgres(getDbConnectionOptions({ max: 1 }))
 const db = drizzle(client)
 
 const existing = await db.select({ text: challenges.text }).from(challenges)

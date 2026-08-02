@@ -3,9 +3,10 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { challenges } from '~~/server/database/schema'
 import { seedChallenges } from '~~/server/database/seed-data/challenges'
+import { getDbConnectionOptions } from '~~/server/database/connection'
 
 export default defineNitroPlugin(async () => {
-  const client = postgres(process.env.DATABASE_URL || 'postgres:///biert', { max: 1 })
+  const client = postgres(getDbConnectionOptions({ max: 1 }))
   const db = drizzle(client)
 
   await migrate(db, { migrationsFolder: './server/database/migrations' })
