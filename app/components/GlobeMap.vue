@@ -284,7 +284,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative h-full w-full">
+  <!--
+    z-0 (not z-index:auto) matters here: it makes this its own stacking context, so a marker's
+    z-index:10 (set to keep overlapping markers clickable) stays contained within it instead of
+    escaping past this element's un-stacked-context siblings — e.g. the bottom sheet, which would
+    otherwise render *behind* an auto-positioned marker despite coming later in the DOM.
+  -->
+  <div class="relative z-0 h-full w-full">
     <div ref="mapEl" class="h-full w-full" />
     <div
       v-if="!config.public.maptilerKey"

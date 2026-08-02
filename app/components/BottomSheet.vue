@@ -193,7 +193,7 @@ const sheetStyle = computed(() => ({
 <template>
   <div
     ref="sheetEl"
-    class="absolute inset-0 flex flex-col rounded-t-3xl bg-white text-neutral-900 shadow-[0_-8px_30px_rgba(0,0,0,0.35)]"
+    class="absolute inset-0 z-10 flex flex-col rounded-t-3xl bg-white text-neutral-900 shadow-[0_-8px_30px_rgba(0,0,0,0.35)]"
     :style="sheetStyle"
   >
     <div
