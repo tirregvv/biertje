@@ -12,8 +12,12 @@ const props = withDefaults(
     countryLabelZoomThreshold?: number
     /** Percentage (0-100) between the map's min and max zoom before continent labels appear. */
     continentLabelZoomThreshold?: number
+    /** Fraction (0-1) of this component's own height currently covered by UI docked to the
+     * bottom (the drawer sheet) — the globe re-centers into the remaining space instead of
+     * treating that covered area as if it were still visible. */
+    bottomOverlay?: number
   }>(),
-  { myLocation: null, countryLabelZoomThreshold: 15, continentLabelZoomThreshold: 5 }
+  { myLocation: null, countryLabelZoomThreshold: 15, continentLabelZoomThreshold: 5, bottomOverlay: 0 }
 )
 
 const emit = defineEmits<{ (e: 'select', sessionId: string | null): void; (e: 'interact'): void }>()
@@ -189,6 +193,22 @@ function applyPlaceLabelZoomThreshold(classKeyword: string, thresholdPercent: nu
   }
 }
 
+function bottomPaddingPx() {
+  return (mapEl.value?.getBoundingClientRect().height ?? 0) * props.bottomOverlay
+}
+
+/** Re-centers the visible globe into whatever space is left above the sheet. maplibre's `padding`
+ * shifts where a given center coordinate lands on screen without touching the actual geographic
+ * center, so this animates smoothly alongside the sheet's own transition instead of jumping. */
+function applyBottomOverlay() {
+  if (!map) return
+  map.easeTo({
+    padding: { top: 0, bottom: bottomPaddingPx(), left: 0, right: 0 },
+    duration: 320,
+    easing: (t) => gsap.parseEase('power2.inOut')(t)
+  })
+}
+
 function flyToLocation(lat: number, lng: number) {
   if (!map) return
   userInteracted = true
@@ -224,6 +244,7 @@ onMounted(() => {
     style: `https://api.maptiler.com/maps/hybrid/style.json?key=${config.public.maptilerKey}`,
     zoom: 0.4,
     center: [10, 30],
+    padding: { top: 0, bottom: bottomPaddingPx(), left: 0, right: 0 },
     attributionControl: false
   })
 
@@ -282,6 +303,8 @@ watch(
 )
 
 watch(() => props.myLocation, syncMyLocationMarker, { deep: true })
+
+watch(() => props.bottomOverlay, applyBottomOverlay)
 
 onBeforeUnmount(() => {
   stopIdleRotation()

@@ -12,6 +12,11 @@ const navItems = [
   { to: '/settings', icon: '⚙️', label: 'Settings' }
 ]
 
+const sheetSnapPoints = { closed: 0.13, peek: 0.42, full: 0.94 }
+/** How much of the container's height the sheet currently covers — passed to GlobeMap so it can
+ * keep the globe visually centered in the space actually left over, not the full container. */
+const sheetOverlayFraction = computed(() => sheetSnapPoints[sheetSnap.value as keyof typeof sheetSnapPoints] ?? 0)
+
 const showShell = computed(() => loggedIn.value && !['/login', '/signup'].includes(route.path))
 
 const globeEl = ref<GlobeApi | null>(null)
@@ -107,11 +112,12 @@ onBeforeUnmount(() => {
         ref="globeEl"
         :sessions="store.mappable"
         :my-location="myLocation"
+        :bottom-overlay="sheetOverlayFraction"
         @select="onMarkerSelect"
         @interact="onGlobeInteract"
       />
 
-      <BottomSheet v-model="sheetSnap" :snap-points="{ closed: 0.13, peek: 0.42, full: 0.94 }">
+      <BottomSheet v-model="sheetSnap" :snap-points="sheetSnapPoints">
         <template #header>
           <nav class="flex items-stretch justify-around px-1 pb-1.5 pt-1">
             <NuxtLink
