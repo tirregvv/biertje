@@ -16,7 +16,7 @@ const props = withDefaults(
   { myLocation: null, countryLabelZoomThreshold: 15, continentLabelZoomThreshold: 5 }
 )
 
-const emit = defineEmits<{ (e: 'select', sessionId: string | null): void }>()
+const emit = defineEmits<{ (e: 'select', sessionId: string | null): void; (e: 'interact'): void }>()
 
 const config = useRuntimeConfig()
 const mapEl = ref<HTMLDivElement | null>(null)
@@ -261,8 +261,15 @@ onMounted(() => {
     })
   })
 
-  map.on('mousedown', () => (userInteracted = true))
-  map.on('touchstart', () => (userInteracted = true))
+  /** Any interaction with the globe — pan/rotate, pinch/scroll zoom, or a marker tap (whose own
+   * mousedown bubbles here too) — should get the sheet out of the way, not just marker selection. */
+  const onInteractionStart = () => {
+    userInteracted = true
+    emit('interact')
+  }
+  map.on('mousedown', onInteractionStart)
+  map.on('touchstart', onInteractionStart)
+  map.on('wheel', onInteractionStart)
 })
 
 watch(

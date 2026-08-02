@@ -1,8 +1,11 @@
 <script setup lang="ts">
 /**
- * Draggable sheet that snaps between named breakpoints (fractions of its own height, e.g.
- * { peek: 0.42, full: 0.94 }). Not tied to any specific content — the header slot renders
- * fixed (non-scrolling) chrome like a settings button, the default slot is the scrollable body.
+ * Draggable sheet that snaps between named breakpoints (fractions of its parent's height, e.g.
+ * { peek: 0.42, full: 0.94 }). Sized via a real CSS `height` (not a translateY transform) so
+ * slotted content actually lays out against the sheet's current, visible height — a page that
+ * centers itself with h-full sees the peek height, not the full sheet height clipped down to a
+ * sliver. Not tied to any specific content — the header slot renders fixed (non-scrolling) chrome
+ * like a nav bar, the default slot is the scrollable body.
  */
 const props = defineProps<{
   snapPoints: Record<string, number>
@@ -18,7 +21,7 @@ const emit = defineEmits<{
 const sheetEl = ref<HTMLElement | null>(null)
 const contentEl = ref<HTMLElement | null>(null)
 const dragging = ref(false)
-const dragTranslateY = ref<number | null>(null)
+const dragHeight = ref<number | null>(null)
 
 const sortedSnaps = computed(() => Object.entries(props.snapPoints).sort((a, b) => a[1] - b[1]))
 const fullKey = computed(() => sortedSnaps.value[sortedSnaps.value.length - 1][0])
@@ -28,26 +31,36 @@ function fractionFor(key: string) {
   return props.snapPoints[key] ?? sortedSnaps.value[0][1]
 }
 
-function translateYForFraction(fraction: number, height: number) {
-  return height * (1 - fraction)
+function containerHeight() {
+  return sheetEl.value?.parentElement?.getBoundingClientRect().height ?? 0
 }
 
-function currentTranslate() {
-  const height = sheetEl.value?.getBoundingClientRect().height ?? 0
-  return translateYForFraction(fractionFor(props.modelValue), height)
+function heightForFraction(fraction: number, containerH: number) {
+  return containerH * fraction
 }
 
-function nearestSnapKey(translate: number, height: number) {
+function currentHeight() {
+  return heightForFraction(fractionFor(props.modelValue), containerHeight())
+}
+
+function nearestSnapKey(height: number, containerH: number) {
   let best = sortedSnaps.value[0][0]
   let bestDist = Infinity
   for (const [key, fraction] of sortedSnaps.value) {
-    const dist = Math.abs(translateYForFraction(fraction, height) - translate)
+    const dist = Math.abs(heightForFraction(fraction, containerH) - height)
     if (dist < bestDist) {
       bestDist = dist
       best = key
     }
   }
   return best
+}
+
+/** Whether the slotted content is taller than the room it currently has — used to auto-expand
+ * instead of leaving it silently clipped (see the drag-engage check in onPointerMove). */
+function contentOverflows() {
+  const el = contentEl.value
+  return !!el && el.scrollHeight > el.clientHeight + 1
 }
 
 /** Minimum pointer travel, in px, before a press commits to dragging the sheet — below this,
@@ -58,7 +71,7 @@ let pointerId: number | null = null
 let origin: 'handle' | 'content' = 'content'
 let startX = 0
 let startY = 0
-let startTranslate = 0
+let startHeight = 0
 let lastY = 0
 let lastT = 0
 let velocity = 0
@@ -79,7 +92,7 @@ function beginTracking(e: PointerEvent, from: 'handle' | 'content') {
   lastY = e.clientY
   lastT = performance.now()
   velocity = 0
-  startTranslate = dragTranslateY.value ?? currentTranslate()
+  startHeight = dragHeight.value ?? currentHeight()
   mode = 'pending'
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', onPointerUp)
@@ -106,17 +119,28 @@ function onContentPointerDown(e: PointerEvent) {
 }
 
 function updateDrag(dy: number) {
-  if (!sheetEl.value) return
-  const height = sheetEl.value.getBoundingClientRect().height
-  const minT = translateYForFraction(sortedSnaps.value[sortedSnaps.value.length - 1][1], height)
-  const maxT = translateYForFraction(sortedSnaps.value[0][1], height)
-  dragTranslateY.value = Math.min(maxT, Math.max(minT, startTranslate + dy))
+  const containerH = containerHeight()
+  if (!containerH) return
+  const minH = heightForFraction(sortedSnaps.value[0][1], containerH)
+  const maxH = heightForFraction(sortedSnaps.value[sortedSnaps.value.length - 1][1], containerH)
+  dragHeight.value = Math.min(maxH, Math.max(minH, startHeight - dy))
 }
 
 function engageDrag() {
   mode = 'dragging'
   dragging.value = true
   emit('dragging', true)
+}
+
+/** Jump straight to the fullest snap (with the normal eased transition, not a 1:1 drag) — used
+ * when the user tries to scroll content that doesn't fit the sheet's current, non-full height, so
+ * "scrolling" oversized content reads as "show me everything" rather than requiring an exact drag
+ * distance or several flicks through intermediate snap points. */
+function expandToFull() {
+  dragging.value = false
+  emit('dragging', false)
+  if (props.modelValue !== fullKey.value) emit('update:modelValue', fullKey.value)
+  emit('settled', fullKey.value)
 }
 
 function onPointerMove(e: PointerEvent) {
@@ -129,12 +153,16 @@ function onPointerMove(e: PointerEvent) {
 
     const scrollTop = contentEl.value?.scrollTop ?? 0
     const shouldDragSheet = origin === 'handle' || !contentScrollable.value || (scrollTop <= 0 && dy > 0)
-    if (shouldDragSheet) {
-      engageDrag()
-    } else {
+    if (!shouldDragSheet) {
       mode = 'ignoring'
       return
     }
+    if (origin === 'content' && !contentScrollable.value && dy < 0 && contentOverflows()) {
+      endTracking()
+      expandToFull()
+      return
+    }
+    engageDrag()
   }
 
   if (mode !== 'dragging') return
@@ -149,9 +177,8 @@ function onPointerMove(e: PointerEvent) {
 }
 
 function settle() {
-  if (!sheetEl.value) return
-  const height = sheetEl.value.getBoundingClientRect().height
-  const current = dragTranslateY.value ?? currentTranslate()
+  const containerH = containerHeight()
+  const current = dragHeight.value ?? currentHeight()
   const VELOCITY_THRESHOLD = 0.5
 
   let targetKey: string
@@ -161,10 +188,10 @@ function settle() {
   } else if (velocity > VELOCITY_THRESHOLD && idx > 0) {
     targetKey = sortedSnaps.value[idx - 1][0]
   } else {
-    targetKey = nearestSnapKey(current, height)
+    targetKey = nearestSnapKey(current, containerH)
   }
 
-  dragTranslateY.value = null
+  dragHeight.value = null
   dragging.value = false
   emit('dragging', false)
   if (targetKey !== props.modelValue) emit('update:modelValue', targetKey)
@@ -182,18 +209,15 @@ onBeforeUnmount(() => {
 })
 
 const sheetStyle = computed(() => ({
-  transform:
-    dragTranslateY.value !== null
-      ? `translateY(${dragTranslateY.value}px)`
-      : `translateY(calc((1 - ${fractionFor(props.modelValue)}) * 100%))`,
-  transition: dragging.value ? 'none' : 'transform 320ms cubic-bezier(0.32, 0.72, 0, 1)'
+  height: `${dragHeight.value !== null ? dragHeight.value : currentHeight()}px`,
+  transition: dragging.value ? 'none' : 'height 320ms cubic-bezier(0.32, 0.72, 0, 1)'
 }))
 </script>
 
 <template>
   <div
     ref="sheetEl"
-    class="absolute inset-0 z-10 flex flex-col rounded-t-3xl bg-white text-neutral-900 shadow-[0_-8px_30px_rgba(0,0,0,0.35)]"
+    class="absolute inset-x-0 bottom-0 z-10 flex flex-col rounded-t-3xl bg-white text-neutral-900 shadow-[0_-8px_30px_rgba(0,0,0,0.35)]"
     :style="sheetStyle"
   >
     <div

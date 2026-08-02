@@ -32,6 +32,12 @@ function onMarkerSelect(sessionId: string | null) {
   if (route.path !== '/') navigateTo('/')
 }
 
+/** Any interaction with the globe itself (pan, zoom, rotate — marker taps already collapse via
+ * onMarkerSelect) should get the sheet out of the way so the map is fully usable. */
+function onGlobeInteract() {
+  sheetSnap.value = 'closed'
+}
+
 /** Tapping the active Globe tab while viewing a friend's detail is a quick way back to the feed,
  * mirroring the explicit back button in the Home page's own detail view. */
 function onNavClick(to: string) {
@@ -97,7 +103,13 @@ onBeforeUnmount(() => {
     <ToastContainer />
 
     <div v-if="showShell" class="relative flex-1 overflow-hidden">
-      <GlobeMap ref="globeEl" :sessions="store.mappable" :my-location="myLocation" @select="onMarkerSelect" />
+      <GlobeMap
+        ref="globeEl"
+        :sessions="store.mappable"
+        :my-location="myLocation"
+        @select="onMarkerSelect"
+        @interact="onGlobeInteract"
+      />
 
       <BottomSheet v-model="sheetSnap" :snap-points="{ closed: 0.13, peek: 0.42, full: 0.94 }">
         <template #header>
