@@ -1,0 +1,1 @@
+ALTER TABLE "beer_sessions" ADD COLUMN "address" text;
