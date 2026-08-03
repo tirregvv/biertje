@@ -175,7 +175,7 @@ async function copyInviteLink() {
               <p class="text-sm font-medium">{{ friend.displayName }}</p>
               <p v-if="activeSessionFor(friend.id)" class="text-xs text-amber-300">
                 {{ DRINK_EMOJI[activeSessionFor(friend.id)!.drinkType] ?? '🍻' }} Drinking now
-                <span v-if="activeSessionFor(friend.id)!.lat === null" class="text-neutral-400"> · Unknown location</span>
+                <span v-if="activeSessionFor(friend.id)!.lat === null || activeSessionFor(friend.id)!.lng === null" class="text-neutral-400"> · Unknown location</span>
                 <span v-else-if="activeSessionFor(friend.id)!.address" class="text-neutral-400"> · {{ activeSessionFor(friend.id)!.address }}</span>
               </p>
               <p v-else class="text-xs text-neutral-500">{{ friend.email }}</p>

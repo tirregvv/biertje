@@ -79,7 +79,7 @@ watch(
   loggedIn,
   (isLoggedIn) => {
     if (isLoggedIn) {
-      store.fetchAll()
+      store.reconcile({ maxAgeMs: 0 })
       connect()
     } else {
       disconnect()
