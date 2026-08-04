@@ -35,16 +35,27 @@ let pendingFocusId: string | null = null
 let introTween: gsap.core.Tween | null = null
 
 /**
- * MapLibre's globe projection sizes the sphere so its equator circumference (in screen pixels)
- * matches the flat Mercator `worldSize` (512 * 2^zoom) at the same zoom — that's what keeps zoom
- * levels feeling consistent when switching projections. Solving worldSize / (2*PI) for the radius
- * that makes the sphere's diameter a given fraction of the container width gives the zoom to ask
- * for. This is derived from that relationship, not visually tuned against real tiles (this
- * environment has no MAPTILER_KEY to render against) — nudge FILL_FRACTION if it looks off.
+ * Zoom needed for the visible globe sphere to reach a target diameter, as a fraction of container
+ * width. This is **empirically calibrated**, not derived from MapLibre's public radius formula
+ * (`worldSize / (2*PI)`, from `getGlobeRadiusPixels`) — that formula describes *local* pixel scale
+ * at the map center (matching flat/globe zoom levels for tile rendering), not the sphere's overall
+ * on-screen silhouette diameter, which is a separate perspective-camera projection question. An
+ * earlier version of this function used that formula directly and was measurably wrong (~30-40%
+ * too zoomed out), which is what made the intro's resting zoom look too small.
+ *
+ * Calibrated by rendering a real maplibre-gl globe (no tiles needed — the *sphere's silhouette
+ * size* is pure camera/projection geometry, independent of what's drawn on its surface) at a
+ * range of zooms and container sizes, and measuring the rendered disc's pixel width directly from
+ * screenshots. Diameter scales as `C(height) * 2^zoom` (confirmed independent of container width —
+ * only height drives MapLibre's FOV-based scale), and `C(height)` fit a clean `k * ln(height)`
+ * curve (k≈21.05) to within ~1% across heights from 400px to 1200px. Solving for zoom:
+ *   targetDiameterPx = fillFraction * widthPx = k * ln(heightPx) * 2^zoom
+ *   zoom = log2(fillFraction * widthPx / (k * ln(heightPx)))
  */
-function fillZoomForWidth(widthPx: number, fillFraction: number) {
+function fillZoomForSize(widthPx: number, heightPx: number, fillFraction: number) {
+  const GLOBE_DIAMETER_CONSTANT = 21.05
   const targetDiameterPx = widthPx * fillFraction
-  return Math.log2((targetDiameterPx * Math.PI) / 512)
+  return Math.log2(targetDiameterPx / (GLOBE_DIAMETER_CONSTANT * Math.log(Math.max(heightPx, 2))))
 }
 
 /** Waits (up to timeoutMs) for the geolocation watch in the layout to report a position, so the
@@ -318,7 +329,8 @@ onMounted(() => {
 
     const targetLat = location?.lat ?? startCenter.lat
     const targetLng = location?.lng ?? startCenter.lng
-    const targetZoom = fillZoomForWidth(mapEl.value?.getBoundingClientRect().width ?? 0, 0.95)
+    const mapRect = mapEl.value?.getBoundingClientRect()
+    const targetZoom = fillZoomForSize(mapRect?.width ?? 0, mapRect?.height ?? 0, 0.95)
 
     // A full 360° spin that still lands exactly on the target: travel the shortest-path direction
     // (spinning the globe by moving the center's longitude, same idiom as the idle rotation below —
