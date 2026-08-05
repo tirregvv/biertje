@@ -36,25 +36,31 @@ let introTween: gsap.core.Tween | null = null
 
 /**
  * Zoom needed for the visible globe sphere to reach a target diameter, as a fraction of container
- * width. This is **empirically calibrated**, not derived from MapLibre's public radius formula
- * (`worldSize / (2*PI)`, from `getGlobeRadiusPixels`) — that formula describes *local* pixel scale
- * at the map center (matching flat/globe zoom levels for tile rendering), not the sphere's overall
- * on-screen silhouette diameter, which is a separate perspective-camera projection question. An
- * earlier version of this function used that formula directly and was measurably wrong (~30-40%
- * too zoomed out), which is what made the intro's resting zoom look too small.
+ * width, when centered at a given latitude. This is **empirically calibrated**, not derived
+ * directly from MapLibre's public radius formula (`getGlobeRadiusPixels`:
+ * `worldSize / (2*PI) / cos(lat)`) — that formula's *local pixel scale at the map center* isn't
+ * automatically the same thing as the sphere's overall on-screen silhouette diameter (a separate
+ * perspective-camera projection question) — but it turned out to be right about *one* thing that
+ * mattered here: the `cos(lat)` term. The sphere really does render measurably larger at higher
+ * latitudes for the same zoom (confirmed empirically: ~24-32% bigger at NYC's/Amsterdam's
+ * latitude than at the equator, matching `1/cos(lat)` closely) — omitting it is what made the
+ * intro overshoot past 100% width (clipping) once it flew to an real, away-from-equator location,
+ * even though it looked right when calibrated/tested at lat=0.
  *
  * Calibrated by rendering a real maplibre-gl globe (no tiles needed — the *sphere's silhouette
  * size* is pure camera/projection geometry, independent of what's drawn on its surface) at a
- * range of zooms and container sizes, and measuring the rendered disc's pixel width directly from
- * screenshots. Diameter scales as `C(height) * 2^zoom` (confirmed independent of container width —
- * only height drives MapLibre's FOV-based scale), and `C(height)` fit a clean `k * ln(height)`
- * curve (k≈21.05) to within ~1% across heights from 400px to 1200px. Solving for zoom:
- *   targetDiameterPx = fillFraction * widthPx = k * ln(heightPx) * 2^zoom
- *   zoom = log2(fillFraction * widthPx / (k * ln(heightPx)))
+ * range of zooms, container sizes, and center latitudes, measuring the rendered disc's pixel
+ * width directly from screenshots. Diameter scales as `C(height) * 2^zoom / cos(lat)` — confirmed
+ * independent of container *width* (only height drives MapLibre's FOV-based scale) — and
+ * `C(height)` fit a clean `k * ln(height)` curve (k≈21.05) to within ~1% across heights from
+ * 400px to 1200px; the `cos(lat)` factor then held to within ~1% at latitudes 0°/40.7°/52.4°.
+ * Solving for zoom:
+ *   targetDiameterPx = fillFraction * widthPx = k * ln(heightPx) * 2^zoom / cos(latDegrees)
+ *   zoom = log2(fillFraction * widthPx * cos(latDegrees) / (k * ln(heightPx)))
  */
-function fillZoomForSize(widthPx: number, heightPx: number, fillFraction: number) {
+function fillZoomForSize(widthPx: number, heightPx: number, latDegrees: number, fillFraction: number) {
   const GLOBE_DIAMETER_CONSTANT = 21.05
-  const targetDiameterPx = widthPx * fillFraction
+  const targetDiameterPx = widthPx * fillFraction * Math.cos((latDegrees * Math.PI) / 180)
   return Math.log2(targetDiameterPx / (GLOBE_DIAMETER_CONSTANT * Math.log(Math.max(heightPx, 2))))
 }
 
@@ -330,7 +336,7 @@ onMounted(() => {
     const targetLat = location?.lat ?? startCenter.lat
     const targetLng = location?.lng ?? startCenter.lng
     const mapRect = mapEl.value?.getBoundingClientRect()
-    const targetZoom = fillZoomForSize(mapRect?.width ?? 0, mapRect?.height ?? 0, 0.95)
+    const targetZoom = fillZoomForSize(mapRect?.width ?? 0, mapRect?.height ?? 0, targetLat, 0.95)
 
     // A full 360° spin that still lands exactly on the target: travel the shortest-path direction
     // (spinning the globe by moving the center's longitude, same idiom as the idle rotation below —
